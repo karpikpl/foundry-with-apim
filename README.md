@@ -22,6 +22,12 @@ Microsoft Foundry with Ai Gateway (API Management and others)
 - [Foundry with APIM](https://github.com/msft-mfg-ai/ai-foundry-config-testing/tree/ai-gateway/options-infra/option_ai-gateway)
 - [Foundry with APIM Internal](https://github.com/msft-mfg-ai/ai-foundry-config-testing/tree/ai-gateway/options-infra/option_ai-gateway-internal)
 
+### Tech Connect
+
+- [Speaker resources](https://eventscreativeresources.microsoft.com/?event=70675-MCAPS%20Tech%20Connect/71908-Style%20guide)
+- [Viva](https://engage.cloud.microsoft/main/users/eyJfdHlwZSI6IlVzZXIiLCJpZCI6IjUzOTc1OTQzODIzMzYifQ/storyline)
+- [SharePoint](https://microsoft.sharepoint.com/sites/Events/SitePages/MCAPS-Tech-Connect.aspx)
+
 ## Contacts
 
 - **PM** Meera Kurup
