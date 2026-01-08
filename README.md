@@ -3,6 +3,9 @@ Microsoft Foundry with Ai Gateway (API Management and others)
 
 <img width="1564" height="901" alt="image" src="https://github.com/user-attachments/assets/ddb29a3f-b413-4f79-af31-462e3e09acc1" />
 
+## Our slide deck
+[⭐Slides⭐](https://microsoft-my.sharepoint.com/:p:/p/rjayaprakash/IQCIz7iuEmykRIyA5goe5UNrAdWge8npkjfx2yEkE3dcykQ?e=LSOq8Q&wdOrigin=TEAMS-MAGLEV.null_ns.rwc&wdExp=TEAMS-TREATMENT&wdhostclicktime=1767896660595&web=1)
+
 ## Materials
 
 - [Azure-Samples/AI-Gateway: APIM ❤️ AI - This repo contains experiments on Azure API Management](https://github.com/Azure-Samples/AI-Gateway)
