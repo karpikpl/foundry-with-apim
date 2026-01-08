@@ -1,7 +1,8 @@
 # Tech Connect - AI Apps and Agents - Foundry with APIM and AI Gateways
 Microsoft Foundry with Ai Gateway (API Management and others)
 
-<img width="1564" height="901" alt="image" src="https://github.com/user-attachments/assets/ddb29a3f-b413-4f79-af31-462e3e09acc1" />
+<img width="1591" height="894" alt="image" src="https://github.com/user-attachments/assets/96c26a88-088d-482b-aa32-a39b6ae98781" />
+[Link](https://microsoft.sharepoint.com/:p:/t/TechSkilling/IQDNdb6PR5CvQonyc5LUU4TmAT4qw6fDDT36D29azicqb5g?e=5xbAJj&nav=eyJzSWQiOjIxNDc0ODM0ODYsImNJZCI6MjI0NTgxMjg4NH0&isSPOFile=1&ovuser=72f988bf-86f1-41af-91ab-2d7cd011db47%2Crjayaprakash%40microsoft.com&wdOrigin=TEAMS-MAGLEV.null_ns.rwc&wdExp=TEAMS-TREATMENT&wdhostclicktime=1767896635991&web=1&clickparams=eyJBcHBOYW1lIjoiVGVhbXMtRGVza3RvcCIsIkFwcFZlcnNpb24iOiI0OS8yNjAxMDQwMDkwMSJ9)
 
 ## Our slide deck
 [⭐Slides⭐](https://microsoft-my.sharepoint.com/:p:/p/rjayaprakash/IQCIz7iuEmykRIyA5goe5UNrAdWge8npkjfx2yEkE3dcykQ?e=LSOq8Q&wdOrigin=TEAMS-MAGLEV.null_ns.rwc&wdExp=TEAMS-TREATMENT&wdhostclicktime=1767896660595&web=1)
