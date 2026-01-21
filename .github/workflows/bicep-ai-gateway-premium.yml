@@ -1,0 +1,22 @@
+name: 'Bicep: ai-gateway-premium'
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'infra/ai-gateway-premium/**'
+      - 'infra/modules/**'
+      - '.github/workflows/bicep-validate-reusable.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'infra/ai-gateway-premium/**'
+      - 'infra/modules/**'
+      - '.github/workflows/bicep-validate-reusable.yml'
+
+jobs:
+  validate:
+    uses: ./.github/workflows/bicep-validate-reusable.yml
+    with:
+      bicep-file: main.bicep
+      working-directory: infra/ai-gateway-premium
