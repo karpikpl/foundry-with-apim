@@ -1,6 +1,7 @@
 name: 'Bicep: ai-gateway-premium'
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
