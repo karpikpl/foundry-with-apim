@@ -30,7 +30,7 @@ resource userAssignedIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@
   scope: resourceGroup(identityResourceSubId, identityResourceRgName)
 }
 
-var litelllmasterkey = take(uniqueString(resourceToken, 'litellm'), 6)
+var litellm_masterkey = take(uniqueString(resourceToken, 'litellm'), 6)
 
 module postgressDb '../db/postgress.bicep' = {
   name: 'postgress-db-deployment'
@@ -70,7 +70,7 @@ module keyVault '../kv/key-vault.bicep' = {
     name: 'kv-${resourceToken}'
     secrets: [
       { name: 'openaiapikey', value: openAiApiKey }
-      { name: 'litelllmasterkey', value: litelllmasterkey }
+      { name: 'litellm_masterkey', value: litellm_masterkey }
     ]
     userAssignedManagedIdentityPrincipalIds: [userAssignedIdentity.properties.principalId]
     principalId: null
@@ -251,7 +251,9 @@ module liteLlmApp '../aca/container-app.bicep' = {
     initContainersTemplate: [
       {
         name: 'config-initializer'
-        image: 'alpine:latest'
+        // SECURITY: Pin to specific digest to prevent supply chain attacks. Update through controlled process.
+        // Original tag: latest - Digest retrieved on 2026-01-21
+        image: 'alpine@sha256:1882fa4569e0c591ea092d3766c4893e19b8901a8e649de7067188aba3cc0679'
         resources: {
           cpu: json('0.25')
           memory: '0.5Gi'
@@ -276,7 +278,9 @@ module liteLlmApp '../aca/container-app.bicep' = {
       }
     ]
     ingressTargetPort: 4000
-    existingImage: 'ghcr.io/berriai/litellm-database:main-stable'
+    // SECURITY: Pin to specific digest to prevent supply chain attacks. Update through controlled process.
+    // Original tag: main-stable - Digest retrieved on 2026-01-21
+    existingImage: 'ghcr.io/berriai/litellm-database@sha256:7856c2a2c7d60344bd9bd218aabd04f2c06ffbf31cfc0c806f2cd42f09fe1b1c'
     userAssignedManagedIdentityClientId: userAssignedIdentity.properties.clientId
     userAssignedManagedIdentityResourceId: userAssignedIdentity.id
     ingressExternal: true
@@ -312,7 +316,7 @@ module liteLlmConnectionDynamic '../ai/connection-modelgateway-dynamic.bicep' = 
   params: {
     aiFoundryName: aiFoundryName
     connectionName: 'model-gateway-litellm-${resourceToken}'
-    apiKey: litelllmasterkey
+    apiKey: litellm_masterkey
     isSharedToAll: true
     gatewayName: 'litellm'
     targetUrl: liteLlmApp.outputs.CONTAINER_APP_FQDN
@@ -324,7 +328,7 @@ module liteLlmConnectionStatic '../ai/connection-modelgateway-static.bicep' = if
   params: {
     aiFoundryName: aiFoundryName
     connectionName: 'model-gateway-litellm-${resourceToken}-static'
-    apiKey: litelllmasterkey
+    apiKey: litellm_masterkey
     isSharedToAll: true
     gatewayName: 'litellm'
     targetUrl: liteLlmApp.outputs.CONTAINER_APP_FQDN
