@@ -6,7 +6,7 @@ This is transcript for Foundry demo.
 
 Foundry Standard with APIM Standard v2 accessed via Private Endpoint.
 
-Models are hosted in Azure OpenAI Service in westus.
+Models are hosted in Azure OpenAI Service in westus region.
 
 ## Notes
 
@@ -17,73 +17,53 @@ Models are hosted in Azure OpenAI Service in westus.
 - Goal is to allow "Foundry Agent Service" to use models from APIM.
 - Only the `Transcript` section is going to be read in the video.
 
+### Instructions
+
+- Leave [Notes] as is.
+- Add [Narration] - transcript for the LLM.
+
 ## Transcript
 
 ### Part 1 - Deployment
 
-From 0:00 to 1:18
+[NARRATION]
+In this demo, I'm using Azure Developer CLI to deploy API Management integrated with Foundry.
+
+First, we're setting up networking—a virtual network with subnets for API Management, private endpoints, and Foundry's Agent Service.
+
+Next, Foundry dependencies: Azure Storage, Cosmos DB, and AI Search—all secured with private endpoints.
+
+Then comes API Management Standard v2 with a private endpoint, deployed into its own subnet and configured as an AI Gateway. It uses Entra ID to authenticate with Azure OpenAI—no API keys needed.
+
+The Foundry account comes next, followed by projects. Each project gets a managed identity and capability host, which enables the Agent Service to run AI agents.
+
+Here's the key part—the APIM Connection. We automatically link each Foundry project to API Management, giving the Agent Service access to models through the AI Gateway.
+
+Let's let the deployment run. Once it completes, I'll show you the networking configuration and how agents call models through APIM connections - both dynamic and static.
+
+### Part 2 - APIM Networking
 
 [NARRATION]
-In this demo, I'm using Azure Developer CLI to deploy the infrastructure for integrating API Management with Foundry.
+Here's our API Management instance. Let's verify its networking settings.
 
-Let me walk you through what's being deployed.
+First, the private endpoint—this handles inbound traffic. Foundry's Agent Service calls the gateway through this endpoint, keeping traffic within the virtual network.
 
-First, we're setting up networking—a virtual network with dedicated subnets for API Management, private endpoints, and Foundry's Agent Service.
+Next, VNET integration for outbound traffic—allowing API Management to securely reach Azure OpenAI backends. No public internet exposure for enterprise compliance.
 
-Next, the Foundry dependencies: Azure Storage, Cosmos DB, and AI Search—all secured with private endpoints and private DNS zones.
-
-Then comes API Management Standard v2, deployed into its own subnet and configured as an AI Gateway. It uses Entra ID to authenticate with Azure OpenAI—no API keys needed.
-
-The Foundry account comes next, followed by three projects. Each project gets its own managed identity and capability host, which enables the Agent Service to run AI agents.
-
-Here's the key part—the APIM Connection. During deployment, we automatically link each Foundry project to API Management. This gives the Agent Service access to models like gpt-4.1-mini, gpt-5-mini, and o3-mini through the AI Gateway.
-
-We also deploy a Log Analytics workspace, Application Insights, and a dashboard for monitoring token usage across all projects.
-
-Let's let the deployment run. Once it completes, I'll show you how agents use the APIM Connection to call models hosted on external Azure OpenAI endpoints.
-
-### Part 2 - Workbook - Sending traffic using AI Agents
+# Part 3 - Foundry Connections
 
 [NARRATION]
-This notebook validates our AI Gateway by generating random traffic across multiple Foundry projects and models.
+Now in the Foundry portal, under Operate, you can see the project's connected resources.
 
-In the first cell, we load our Azure configuration and discover all projects in our Foundry account. For each project, we create an authenticated client using Entra Authentication.
+We have two APIM connections configured during deployment. The dynamic connection discovers available models from the gateway automatically. The static connection has a fixed model list—useful for allowing specific deployments.
 
-Once projects are discovered, we can create AI Project Clients that will be used to create Agents and call the Responses API.
-
-Next we generate random traffic. Each project gets 3 to 10 requests with random deployments and prompts. For each request, we create an agent, send a message through the gateway, and log the result.
-
-Remember, Foundry is deployed without any models. Hence, the deployments are referenced using connection name and model name, which tells Foundry to utilize API Management connection.
-
-We're using two different connections for each project, one with a static model list and another with dynamic model discovery.
-
-Watch as requests flow - green checkmarks for success, red X's for failures.
-
-This confirms Agents are able to connect to API Management for inferencing, which routes traffic to external Azure OpenAI endpoints.
-
-### Part 3 - Dashboard with token usage
+# Part 4 - Testing Agents
 
 [NARRATION]
-Here's our Azure Portal dashboard that aggregates all the traffic we just generated. At the top, you'll see today's and this month's token consumption at a glance.
+Now let's test with a Jupyter notebook that runs AI agents.
 
-The main chart shows token usage over time, broken down by subscription - each subscription represents a Foundry project.
+The notebook creates agents using both connections—dynamic and static—and sends prompts to different models through API Management.
 
-Below that, we have model-level analytics showing which deployments are consuming the most tokens - gpt-4.1-mini, gpt-5-mini, o3-mini - along with their prompt versus completion token breakdown.
+Each request flows through the private endpoint to APIM, then to Azure OpenAI backends.
 
-This dashboard pulls from API Management logs, giving us full visibility into cross-project AI consumption for chargeback and capacity planning.
-
-### Part 4 - Foundry Portal
-
-[NARRATION]
-Now let's switch to the Foundry portal to see how this looks from the project perspective.
-
-Here in the Agents section, you can see the agent we created during our traffic generation. 
-
-Let's navigate to Operate. Under Connected Resources, you'll find the APIM Connection we configured during deployment. This connection links the project to our API Management instance, giving the Agent Service access to all the models exposed through the AI Gateway.
-
-This is where you can manage and monitor the connection at the project level.
-
-### Wrap-up
-
-[NARRATION]
-That's the complete integration - from automated deployment, to agents calling models through API Management, to centralized monitoring. With the APIM Connection, you get enterprise governance over your AI workloads without any manual wiring. Check out the repo for the full infrastructure code.
+At the end, we get a summary confirming all requests completed successfully—validating our end-to-end private connectivity.
