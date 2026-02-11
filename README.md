@@ -250,6 +250,8 @@ az provider register --namespace 'Microsoft.ContainerService'
 - 🔧 **[Azure API Management](https://learn.microsoft.com/azure/api-management/)**
 - ⚡ **[LiteLLM Documentation](https://docs.litellm.ai/)**
 - 🌍 **[OpenRouter API](https://openrouter.ai/docs)**
+- 🏢 **[AI Hub Gateway Landing Zone](aka.ms/ai-hub-gateway)**
+- 🛬 **[AI Landing Zone](aka.ms/ai-hub-gateway)**
 
 ---
 
