@@ -1920,7 +1920,7 @@
         "properties": {
           "prompt": {
             "type": "string",
-            "description": "The prompt to use for the image generation. Read the model documentation to understand\nwhich language you should use to prompt the model and get specific results."
+            "description": "The prompt to use for the image geneartion. Read the model documentation to understand\nwhich language you should use to prompt the model and get specific results."
           },
           "negative_prompt": {
             "type": "string",

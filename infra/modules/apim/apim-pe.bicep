@@ -2,7 +2,7 @@ param tags object = {}
 param peSubnetResourceId string
 param apimName string
 param apimResourceGroup string = resourceGroup().name
-param apimSubscriptionId string = subscription().subscriptionId
+param apimSubsciptionId string = subscription().subscriptionId
 param location string = resourceGroup().location
 
 var subnetIdParts = split(peSubnetResourceId, '/')
@@ -31,7 +31,7 @@ module azure_api_net_DnsZone 'br/public:avm/res/network/private-dns-zone:0.8.0' 
 
 resource apim 'Microsoft.ApiManagement/service@2024-06-01-preview' existing = {
   name: apimName
-  scope: resourceGroup(apimSubscriptionId, apimResourceGroup)
+  scope: resourceGroup(apimSubsciptionId, apimResourceGroup)
 }
 
 resource apimPrivateEndpoint 'Microsoft.Network/privateEndpoints@2024-05-01' = {
