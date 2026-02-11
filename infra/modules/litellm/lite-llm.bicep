@@ -16,7 +16,7 @@ param keyVaultDnsZoneResourceId string
 param postgressDnsZoneResourceId string
 
 param liteLlmConfigYaml string
-param modelsStatic array = []
+param staticModels array = []
 param litlLlmPublicFqdn string?
 param tags object = {}
 
@@ -30,7 +30,7 @@ resource userAssignedIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@
   scope: resourceGroup(identityResourceSubId, identityResourceRgName)
 }
 
-var litellm_masterkey = take(uniqueString(resourceToken, 'litellm'), 6)
+var litelllmasterkey = take(uniqueString(resourceToken, 'litellm'), 6)
 
 module postgressDb '../db/postgress.bicep' = {
   name: 'postgress-db-deployment'
@@ -56,7 +56,6 @@ module managedEnvironment '../aca/container-app-environment.bicep' = {
     appInsightsConnectionString: appInsightsConnectionString
     name: 'aca${resourceToken}'
     logAnalyticsWorkspaceResourceId: logAnalyticsWorkspaceResourceId
-    storages: []
     publicNetworkAccess: 'Disabled'
     infrastructureSubnetId: acaSubnetResourceId
   }
@@ -70,7 +69,7 @@ module keyVault '../kv/key-vault.bicep' = {
     name: 'kv-${resourceToken}'
     secrets: [
       { name: 'openaiapikey', value: openAiApiKey }
-      { name: 'litellm_masterkey', value: litellm_masterkey }
+      { name: 'litelllmasterkey', value: litelllmasterkey }
     ]
     userAssignedManagedIdentityPrincipalIds: [userAssignedIdentity.properties.principalId]
     principalId: null
@@ -251,9 +250,7 @@ module liteLlmApp '../aca/container-app.bicep' = {
     initContainersTemplate: [
       {
         name: 'config-initializer'
-        // SECURITY: Pin to specific digest to prevent supply chain attacks. Update through controlled process.
-        // Original tag: latest - Digest retrieved on 2026-01-21
-        image: 'alpine@sha256:1882fa4569e0c591ea092d3766c4893e19b8901a8e649de7067188aba3cc0679'
+        image: 'alpine:latest'
         resources: {
           cpu: json('0.25')
           memory: '0.5Gi'
@@ -278,9 +275,7 @@ module liteLlmApp '../aca/container-app.bicep' = {
       }
     ]
     ingressTargetPort: 4000
-    // SECURITY: Pin to specific digest to prevent supply chain attacks. Update through controlled process.
-    // Original tag: main-stable - Digest retrieved on 2026-01-21
-    existingImage: 'ghcr.io/berriai/litellm-database@sha256:7856c2a2c7d60344bd9bd218aabd04f2c06ffbf31cfc0c806f2cd42f09fe1b1c'
+    existingImage: 'ghcr.io/berriai/litellm-database:main-stable'
     userAssignedManagedIdentityClientId: userAssignedIdentity.properties.clientId
     userAssignedManagedIdentityResourceId: userAssignedIdentity.id
     ingressExternal: true
@@ -316,23 +311,23 @@ module liteLlmConnectionDynamic '../ai/connection-modelgateway-dynamic.bicep' = 
   params: {
     aiFoundryName: aiFoundryName
     connectionName: 'model-gateway-litellm-${resourceToken}'
-    apiKey: litellm_masterkey
+    apiKey: litelllmasterkey
     isSharedToAll: true
     gatewayName: 'litellm'
     targetUrl: liteLlmApp.outputs.CONTAINER_APP_FQDN
   }
 }
 
-module liteLlmConnectionStatic '../ai/connection-modelgateway-static.bicep' = if (!empty(modelsStatic)) {
+module liteLlmConnectionStatic '../ai/connection-modelgateway-static.bicep' = if (!empty(staticModels)) {
   name: 'lite-llm-connection-static'
   params: {
     aiFoundryName: aiFoundryName
     connectionName: 'model-gateway-litellm-${resourceToken}-static'
-    apiKey: litellm_masterkey
+    apiKey: litelllmasterkey
     isSharedToAll: true
     gatewayName: 'litellm'
     targetUrl: liteLlmApp.outputs.CONTAINER_APP_FQDN
-    staticModels: modelsStatic
+    staticModels: staticModels
   }
 }
 
