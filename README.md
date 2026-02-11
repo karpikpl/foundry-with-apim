@@ -244,7 +244,9 @@ az provider register --namespace 'Microsoft.ContainerService'
 ## 📚 Additional Resources
 
 - 📖 **[Microsoft Foundry Documentation](https://learn.microsoft.com/azure/ai-foundry/)**
-- 🌐 **[AI Gateway Workshop](https://azure-samples.github.io/AI-Gateway/)**
+- 🤖 **[Foundry Samples - by Product Team](https://aka.ms/foundrySamples)
+- 📍 **[More Foundry deployment scenarios](https://github.com/msft-mfg-ai/ai-foundry-deployment-options)
+- 🌐 **[AI Gateway Labs](https://azure-samples.github.io/AI-Gateway/)**
 - 🔧 **[Azure API Management](https://learn.microsoft.com/azure/api-management/)**
 - ⚡ **[LiteLLM Documentation](https://docs.litellm.ai/)**
 - 🌍 **[OpenRouter API](https://openrouter.ai/docs)**
