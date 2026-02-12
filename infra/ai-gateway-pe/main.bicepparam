@@ -13,12 +13,14 @@ param existingFoundryName = empty(existingFoundryNameValue) ? null : existingFou
 var apimPublicEnabledValue = readEnvironmentVariable('APIM_PUBLIC_ENABLED', '')
 param apimPublicEnabled = toLower(apimPublicEnabledValue) == 'true' ? true : false
 
+// to add MCP / OpenAPI servers to Foundry, specify them in this param
+/*
 param apiServices = [
   {
     name: 'weather-mcp'
     dnsZoneName: 'privatelink.westus.azurecontainerapps.io'
     type: 'managedEnvironments'
-    resourceId: '/subscriptions/0721e282-2773-4021-af16-e00641ed5e36/resourceGroups/foundry-landing-zone-westus/providers/Microsoft.App/managedEnvironments/acaqczp34j2qg7pk'
+    resourceId: '/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/foundry-landing-zone-westus/providers/Microsoft.App/managedEnvironments/acaqczp34j2qg7pk'
     uri: 'https://aca-mcp-qczp34j2qg7pk.ashyocean-7ea49412.westus.azurecontainerapps.io/mcp/mcp'
     apiType: 'mcp'
   }
@@ -26,7 +28,7 @@ param apiServices = [
     name: 'weather-openapi'
     dnsZoneName: 'privatelink.westus.azurecontainerapps.io'
     type: 'managedEnvironments'
-    resourceId: '/subscriptions/0721e282-2773-4021-af16-e00641ed5e36/resourceGroups/foundry-landing-zone-westus/providers/Microsoft.App/managedEnvironments/acaqczp34j2qg7pk'
+    resourceId: '/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/foundry-landing-zone-westus/providers/Microsoft.App/managedEnvironments/acaqczp34j2qg7pk'
     uri: 'https://aca-openapi-qczp34j2qg7pk.ashyocean-7ea49412.westus.azurecontainerapps.io'
     apiType: 'openapi'
     openApiSpec: string({
@@ -89,3 +91,4 @@ param apiServices = [
     })
   }
 ]
+*/

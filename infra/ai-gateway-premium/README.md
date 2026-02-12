@@ -96,6 +96,18 @@ export OPENAI_RESOURCE_ID="/subscriptions/<sub-id>/resourceGroups/<rg>/providers
 - `EXISTING_FOUNDRY_NAME` - Use an existing Foundry account instead of creating new
 - `PROJECTS_COUNT` - Number of Foundry projects to create (default: 1)
 
+## Custom domain Support
+
+To deploy APIM Premium with custom domain, you need a cert.
+
+A good way to get one is Let's encrypt:
+
+```bash
+sudo certbot certonly --manual --preferred-challenges dns -d "*.example.com" -d "example.com"
+```
+
+Custom domain support can also be commented out from `main.bicep`.
+
 ## Deployment
 
 ```bash

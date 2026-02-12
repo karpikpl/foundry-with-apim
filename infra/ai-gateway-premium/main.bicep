@@ -14,6 +14,7 @@ param existingFoundryName string?
 param projectsCount int = 3
 param apiServices apiType[] = [] // Array of MCP service definitions
 
+// TODO: you need replace with your cert for custom domain support
 var certFilePath = '../../../../../.ssh/cloud.karpala.pfx'
 var certFileBase64 = loadFileAsBase64(certFilePath)
 param customDomain string = 'cloud.karpala.org'
