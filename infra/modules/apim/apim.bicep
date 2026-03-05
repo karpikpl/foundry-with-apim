@@ -134,6 +134,9 @@ module openAiv2Api 'v2/inference-api.bicep' = if (apimSku == 'Premium' || apimSk
     appInsightsInstrumentationKey: appInsightsInstrumentationKey
     appInsightsId: appInsightsId
   }
+  dependsOn: [
+    inference_api
+  ]
 }
 
 output apimResourceId string = apim.outputs.id
