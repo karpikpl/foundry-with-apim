@@ -1,6 +1,7 @@
 // Azure Portal Dashboard for APIM Token Usage Monitoring
 // Based on AI-Gateway FinOps Framework patterns
-// Uses AppMetrics (Log Analytics) for token data with Project ID, and ApiManagementGatewayLlmLog for model usage
+// Uses ApiManagementGatewayLlmLog for accurate token data (actual counts, even for streaming)
+// Joins with ApiManagementGatewayLogs to get caller name from x-caller-name header
 
 @description('Location for the dashboard')
 param location string
@@ -8,13 +9,7 @@ param location string
 @description('Dashboard display name')
 param dashboardDisplayName string
 
-@description('Application Insights resource ID for metrics queries')
-param applicationInsightsId string
-
-@description('Application Insights name')
-param applicationInsightsName string
-
-@description('Log Analytics Workspace resource ID for AppMetrics and gateway logs')
+@description('Log Analytics Workspace resource ID for gateway logs')
 param logAnalyticsWorkspaceId string
 
 // ------------------
@@ -24,81 +19,93 @@ param logAnalyticsWorkspaceId string
 var dashboardName = 'apim-token-dashboard-${toLower(uniqueString(resourceGroup().id, location))}'
 
 // KQL Queries for dashboard tiles
-// Uses AppMetrics for project-based stats (has Project ID in Properties)
-// Uses ApiManagementGatewayLlmLog joined with ApiManagementGatewayLogs for model usage by project
-// The x-caller-name header is logged in RequestHeaders via API diagnostics configuration
+// All queries use ApiManagementGatewayLlmLog (actual token counts, even for streaming)
+// Caller identity comes from x-caller-name header in ApiManagementGatewayLogs.BackendRequestHeaders
 
 var kqlTodayStats = '''
-AppMetrics
-| where Name in ("Prompt Tokens", "Completion Tokens", "Total Tokens")
+ApiManagementGatewayLlmLog
+| where isnotempty(DeploymentName)
 | where TimeGenerated >= startofday(now())
 | summarize
-    TodayPromptTokens = sumif(Sum, Name == "Prompt Tokens"),
-    TodayCompletionTokens = sumif(Sum, Name == "Completion Tokens"),
-    TodayTotalTokens = sumif(Sum, Name == "Total Tokens"),
-    TodayRequests = countif(Name == "Total Tokens")
+    TodayPromptTokens = sum(PromptTokens),
+    TodayCompletionTokens = sum(CompletionTokens),
+    TodayTotalTokens = sum(TotalTokens),
+    TodayRequests = dcount(CorrelationId)
 '''
 
 var kqlMonthStats = '''
-AppMetrics
-| where Name in ("Prompt Tokens", "Completion Tokens", "Total Tokens")
+let llmLogs = ApiManagementGatewayLlmLog
+| where isnotempty(DeploymentName)
+| where TimeGenerated >= startofmonth(now());
+let callers = ApiManagementGatewayLogs
 | where TimeGenerated >= startofmonth(now())
-| extend CallerName = tostring(parse_json(Properties)["Caller Name"])
+| where BackendRequestHeaders has "x-caller-name"
+| extend CallerName = extract(@'"x-caller-name":"([^"]+)"', 1, tostring(BackendRequestHeaders))
+| summarize CallerName = any(CallerName) by CorrelationId;
+llmLogs
+| join kind=leftouter callers on CorrelationId
 | summarize
-    MonthTotalTokens = sumif(Sum, Name == "Total Tokens"),
-    MonthRequests = countif(Name == "Total Tokens"),
-    UniqueProjects = dcount(CallerName)
+    MonthTotalTokens = sum(TotalTokens),
+    MonthRequests = dcount(CorrelationId),
+    UniqueCallers = dcount(CallerName)
 '''
 
-// Token usage over time by Project - using AppMetrics which has Project ID
 var kqlTokenUsageOverTime = '''
-AppMetrics
-| where Name == "Total Tokens"
-| extend CallerName = tostring(parse_json(Properties)["Caller Name"])
-| summarize TotalTokens = sum(Sum) by bin(TimeGenerated, 1h), CallerName
+let llmLogs = ApiManagementGatewayLlmLog
+| where isnotempty(DeploymentName)
+| project TimeGenerated, TotalTokens, CorrelationId;
+let callers = ApiManagementGatewayLogs
+| where BackendRequestHeaders has "x-caller-name"
+| extend CallerName = extract(@'"x-caller-name":"([^"]+)"', 1, tostring(BackendRequestHeaders))
+| summarize CallerName = any(CallerName) by CorrelationId;
+llmLogs
+| join kind=leftouter callers on CorrelationId
+| extend CallerName = coalesce(CallerName, "Unknown")
+| summarize TotalTokens = sum(TotalTokens) by bin(TimeGenerated, 1h), CallerName
 | order by TimeGenerated asc
 '''
 
 var kqlTopConsumers = '''
-let totalTokens = toscalar(
-    AppMetrics
-    | where Name == "Total Tokens"
-    | where TimeGenerated >= ago(30d)
-    | summarize sum(Sum)
-);
-AppMetrics
-| where Name == "Total Tokens"
+let llmLogs = ApiManagementGatewayLlmLog
+| where isnotempty(DeploymentName)
+| where TimeGenerated >= ago(30d);
+let callers = ApiManagementGatewayLogs
 | where TimeGenerated >= ago(30d)
-| extend CallerName = tostring(parse_json(Properties)["Caller Name"])
-| summarize TotalTokens = sum(Sum), Requests = dcount(OperationId) by CallerName
+| where BackendRequestHeaders has "x-caller-name"
+| extend CallerName = extract(@'"x-caller-name":"([^"]+)"', 1, tostring(BackendRequestHeaders))
+| summarize CallerName = any(CallerName) by CorrelationId;
+let totalTokens = toscalar(llmLogs | summarize sum(TotalTokens));
+llmLogs
+| join kind=leftouter callers on CorrelationId
+| extend CallerName = coalesce(CallerName, "Unknown")
+| summarize TotalTokens = sum(TotalTokens), Requests = dcount(CorrelationId) by CallerName
 | top 10 by TotalTokens desc
 | extend Percentage = round(TotalTokens * 100.0 / totalTokens, 1)
 '''
 
 var kqlDailyUsageSummary = '''
-AppMetrics
-| where Name in ("Prompt Tokens", "Completion Tokens", "Total Tokens")
-| extend CallerName = tostring(parse_json(Properties)["Caller Name"])
+let llmLogs = ApiManagementGatewayLlmLog
+| where isnotempty(DeploymentName)
+| project TimeGenerated, PromptTokens, CompletionTokens, TotalTokens, CorrelationId;
+let callers = ApiManagementGatewayLogs
+| where BackendRequestHeaders has "x-caller-name"
+| extend CallerName = extract(@'"x-caller-name":"([^"]+)"', 1, tostring(BackendRequestHeaders))
+| summarize CallerName = any(CallerName) by CorrelationId;
+llmLogs
+| join kind=leftouter callers on CorrelationId
+| extend CallerName = coalesce(CallerName, "Unknown")
 | summarize
-    PromptTokens = sumif(Sum, Name == "Prompt Tokens"),
-    CompletionTokens = sumif(Sum, Name == "Completion Tokens"),
-    TotalTokens = sumif(Sum, Name == "Total Tokens"),
-    Requests = countif(Name == "Total Tokens")
+    PromptTokens = sum(PromptTokens),
+    CompletionTokens = sum(CompletionTokens),
+    TotalTokens = sum(TotalTokens),
+    Requests = dcount(CorrelationId)
 by bin(TimeGenerated, 1d), CallerName
 | order by TimeGenerated desc
 '''
 
 var kqlModelUsage = '''
-// Join LLM logs (has DeploymentName) with Gateway logs (has x-caller-name header)
-let llmLogs = ApiManagementGatewayLlmLog
-| where DeploymentName != ""
-| project TimeGenerated, DeploymentName, ModelName, PromptTokens, CompletionTokens, TotalTokens, CorrelationId;
-let gatewayLogs = ApiManagementGatewayLogs
-| where BackendRequestHeaders has "x-caller-name"
-| extend CallerName = extract(@'"x-caller-name":"([^"]+)"', 1, tostring(BackendRequestHeaders))
-| project CorrelationId, CallerName;
-llmLogs
-| join kind=leftouter gatewayLogs on CorrelationId
+ApiManagementGatewayLlmLog
+| where isnotempty(DeploymentName)
 | summarize
     PromptTokens = sum(PromptTokens),
     CompletionTokens = sum(CompletionTokens),
@@ -108,18 +115,17 @@ by DeploymentName, ModelName
 | order by TotalTokens desc
 '''
 
-// Model usage by project - answers "what models is each project using?"
 var kqlModelUsageByProject = '''
-// Join LLM logs (has DeploymentName) with Gateway logs (has x-caller-name header)
 let llmLogs = ApiManagementGatewayLlmLog
-| where DeploymentName != ""
+| where isnotempty(DeploymentName)
 | project TimeGenerated, DeploymentName, ModelName, PromptTokens, CompletionTokens, TotalTokens, CorrelationId;
-let gatewayLogs = ApiManagementGatewayLogs
+let callers = ApiManagementGatewayLogs
 | where BackendRequestHeaders has "x-caller-name"
 | extend CallerName = extract(@'"x-caller-name":"([^"]+)"', 1, tostring(BackendRequestHeaders))
-| project CorrelationId, CallerName;
+| summarize CallerName = any(CallerName) by CorrelationId;
 llmLogs
-| join kind=leftouter gatewayLogs on CorrelationId
+| join kind=leftouter callers on CorrelationId
+| extend CallerName = coalesce(CallerName, "Unknown")
 | summarize
     PromptTokens = sum(PromptTokens),
     CompletionTokens = sum(CompletionTokens),
@@ -130,14 +136,21 @@ by CallerName, DeploymentName
 '''
 
 var kqlTotalTokensPerProject = '''
-AppMetrics
-| where Name in ("Prompt Tokens", "Completion Tokens", "Total Tokens")
-| extend CallerName = tostring(parse_json(Properties)["Caller Name"])
+let llmLogs = ApiManagementGatewayLlmLog
+| where isnotempty(DeploymentName)
+| project PromptTokens, CompletionTokens, TotalTokens, CorrelationId;
+let callers = ApiManagementGatewayLogs
+| where BackendRequestHeaders has "x-caller-name"
+| extend CallerName = extract(@'"x-caller-name":"([^"]+)"', 1, tostring(BackendRequestHeaders))
+| summarize CallerName = any(CallerName) by CorrelationId;
+llmLogs
+| join kind=leftouter callers on CorrelationId
+| extend CallerName = coalesce(CallerName, "Unknown")
 | summarize
-    PromptTokens = sumif(Sum, Name == "Prompt Tokens"),
-    CompletionTokens = sumif(Sum, Name == "Completion Tokens"),
-    TotalTokens = sumif(Sum, Name == "Total Tokens"),
-    Requests = countif(Name == "Total Tokens")
+    PromptTokens = sum(PromptTokens),
+    CompletionTokens = sum(CompletionTokens),
+    TotalTokens = sum(TotalTokens),
+    Requests = dcount(CorrelationId)
 by CallerName
 | order by TotalTokens desc
 '''
@@ -170,7 +183,7 @@ resource dashboard 'Microsoft.Portal/dashboards@2022-12-01-preview' = {
               inputs: []
               settings: {
                 content: {
-                  content: '# 🤖 APIM Token Usage Dashboard\n\nMonitor LLM token consumption by AI Foundry Project. Data sourced from `AppMetrics` (Project ID, token counts) and `ApiManagementGatewayLlmLog` (deployment/model details).'
+                  content: '# 🤖 APIM Token Usage Dashboard\n\nMonitor LLM token consumption by caller. Data sourced from `ApiManagementGatewayLlmLog` (actual token counts, even for streaming) joined with `ApiManagementGatewayLogs` (caller identity via x-caller-name header).'
                   title: 'APIM Token Usage Dashboard'
                   subtitle: ''
                   markdownSource: 1
@@ -197,7 +210,7 @@ resource dashboard 'Microsoft.Portal/dashboards@2022-12-01-preview' = {
                 { name: 'DashboardId', isOptional: true }
                 { name: 'PartId', value: 'today-stats', isOptional: true }
                 { name: 'PartTitle', value: '📊 Today\'s Usage', isOptional: true }
-                { name: 'PartSubTitle', value: applicationInsightsName, isOptional: true }
+                { name: 'PartSubTitle', value: 'ApiManagementGatewayLlmLog', isOptional: true }
                 { name: 'Query', value: kqlTodayStats, isOptional: true }
                 { name: 'ControlType', value: 'AnalyticsGrid', isOptional: true }
                 { name: 'DraftRequestParameters', isOptional: true }
@@ -225,7 +238,7 @@ resource dashboard 'Microsoft.Portal/dashboards@2022-12-01-preview' = {
                 { name: 'TimeRange', value: 'P30D', isOptional: true }
                 { name: 'PartId', value: 'month-stats', isOptional: true }
                 { name: 'PartTitle', value: '📅 This Month', isOptional: true }
-                { name: 'PartSubTitle', value: applicationInsightsName, isOptional: true }
+                { name: 'PartSubTitle', value: 'ApiManagementGatewayLlmLog', isOptional: true }
                 { name: 'Query', value: kqlMonthStats, isOptional: true }
                 { name: 'ControlType', value: 'AnalyticsGrid', isOptional: true }
                 { name: 'resourceTypeMode', isOptional: true }

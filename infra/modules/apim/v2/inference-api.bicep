@@ -164,8 +164,8 @@ resource apiPolicy 'Microsoft.ApiManagement/service/apis/policies@2024-06-01-pre
 // ------------------
 
 
-var listDeploymentsPolicyXml = replace(loadTextContent('deploymentsPolicy.xml'), 'FOUNDRY_ID', first(aiServicesConfig).resourceId)
-var getDeploymentPolicyXml = replace(loadTextContent('deploymentPolicy.xml'), 'FOUNDRY_ID', first(aiServicesConfig).resourceId)
+var listDeploymentsPolicyXml = replace(loadTextContent('deploymentsPolicy.xml'), 'FOUNDRY_ID', first(aiServicesConfig)!.resourceId)
+var getDeploymentPolicyXml = replace(loadTextContent('deploymentPolicy.xml'), 'FOUNDRY_ID', first(aiServicesConfig)!.resourceId)
 
 // List Deployments Operation - Returns all available models/deployments
 resource listDeploymentsOperation 'Microsoft.ApiManagement/service/apis/operations@2024-06-01-preview' = if (enableModelDiscovery) {
@@ -247,7 +247,7 @@ resource inferenceBackend 'Microsoft.ApiManagement/service/backends@2024-06-01-p
   parent: apimService
   properties: {
     description: 'Inference backend for ${config.name} API Type: ${inferenceAPIType}'
-    url: '${config.endpoint}${endpointPath}'
+    url: '${config.endpoint}${endsWith(config.endpoint, '/') ? '' : '/'}${endpointPath}'
     protocol: 'http'
     circuitBreaker: (configureCircuitBreaker) ? {
       rules: [

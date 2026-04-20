@@ -42,8 +42,6 @@ module dashboard 'dashboard.bicep' = {
   params: {
     location: location
     dashboardDisplayName: dashboardDisplayName
-    applicationInsightsId: applicationInsights.id
-    applicationInsightsName: applicationInsights.name
     logAnalyticsWorkspaceId: logAnalytics.id
   }
 }
