@@ -123,7 +123,7 @@ resource foundry_project 'Microsoft.CognitiveServices/accounts/projects@2025-04-
       isSharedToAll: false
       //isDefault: true  // not valid property
       credentials: {
-        key: appInsights!.properties.InstrumentationKey
+        key: appInsights!.properties.ConnectionString
       }
       metadata: {
         ApiType: 'Azure'
