@@ -23,6 +23,12 @@ param keyVaultResourceId string?
 @description('Bunch of known issues with KeyVault integration, so disable by default')
 param keyVaultConnectionEnabled bool = false
 
+// Foundry is always of type AIServices
+@allowed([
+  'AIServices'
+  'OpenAI'
+])
+param kind string = 'AIServices'
 // --------------------------------------------------------------------------------------------------------------
 // Variables
 // --------------------------------------------------------------------------------------------------------------
@@ -39,8 +45,18 @@ type aiModelTDeploymentType = {
       name: string
       @description('The version of the model, e.g. "2024-11-20" or "0125"')
       version: string
-      format: 'OpenAI' | 'Cohere'
+      format: 'OpenAI' | 'Cohere' | 'Anthropic'
     }
+    @description('Required for Anthropic models: customer attestation forwarded to Anthropic on every request. See https://learn.microsoft.com/azure/developer/ai/how-to/deploy-claude-foundry')
+    modelProviderData: {
+      organizationName: string
+      countryCode: string
+      industry: string
+    }?
+    @description('Version upgrade behavior, e.g. "OnceNewDefaultVersionAvailable" (Anthropic default) or "NoAutoUpgrade".')
+    versionUpgradeOption: string?
+    @description('Responsible AI content-safety policy name (defaults to Microsoft.DefaultV2 on Foundry).')
+    raiPolicyName: string?
   }
   sku: {
     name: 'Standard' | 'GlobalStandard'
@@ -65,12 +81,11 @@ resource existingAccount 'Microsoft.CognitiveServices/accounts@2025-04-01-previe
 }
 
 // --------------------------------------------------------------------------------------------------------------
-// Foundry is always of type AIServices
-resource account 'Microsoft.CognitiveServices/accounts@2025-04-01-preview' = if (!useExistingService) {
+resource account 'Microsoft.CognitiveServices/accounts@2025-12-01' = if (!useExistingService) {
   name: name
   location: location
   tags: tags
-  kind: 'AIServices'
+  kind: kind
   identity: !empty(managedIdentityResourceId)
     ? {
         type: 'UserAssigned'
@@ -113,7 +128,7 @@ resource account 'Microsoft.CognitiveServices/accounts@2025-04-01-preview' = if 
 }
 
 @batchSize(1)
-resource deployment 'Microsoft.CognitiveServices/accounts/deployments@2025-06-01' = [
+resource deployment 'Microsoft.CognitiveServices/accounts/deployments@2025-10-01-preview' = [
   for deployment in deployments: if (!useExistingService) {
     parent: account
     name: deployment.name
