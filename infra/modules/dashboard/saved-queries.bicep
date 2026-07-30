@@ -236,6 +236,190 @@ by SubscriptionId = ApimSubscriptionId, DeploymentName
   }
 }
 
+// ----------------------------------------------------------------------------
+//  Saved queries that surface the canonical x-caller-* headers (set by the
+//  shared caller-identity policy fragment) and Foundry's own x-ms-foundry-*
+//  headers. Use these to pivot on Foundry account / project / model / agent
+//  instead of opaque ApimSubscriptionId.
+// ----------------------------------------------------------------------------
+
+// Saved Query: Tokens by Foundry / Project / Model
+resource queryTokensByFoundry 'Microsoft.OperationalInsights/workspaces/savedSearches@2020-08-01' = {
+  name: '${workspaceName}/APIM_TokensByFoundryProject'
+  properties: {
+    category: 'APIM Token Analytics'
+    displayName: 'Tokens by Foundry / Project / Model'
+    query: '''
+ApiManagementGatewayLlmLog
+| where isnotempty(ModelName)
+| join kind=leftouter (
+    ApiManagementGatewayLogs
+    | extend H = parse_json(tostring(RequestHeaders))
+    | project CorrelationId,
+              Foundry = tostring(H['x-caller-foundry']),
+              Project = coalesce(tostring(H['x-caller-project']), tostring(H['openai-project'])),
+              FoundryModel = tostring(H['x-ms-foundry-model-id']),
+              AgentId = tostring(H['x-ms-foundry-agent-id']),
+              CallerName = tostring(H['x-caller-name'])
+) on CorrelationId
+| summarize
+    PromptTokens = sum(PromptTokens),
+    CompletionTokens = sum(CompletionTokens),
+    TotalTokens = sum(TotalTokens),
+    Requests = count()
+    by Foundry, Project, ModelName
+| order by TotalTokens desc
+'''
+    version: 2
+    tags: [
+      {
+        name: 'Group'
+        value: 'APIM FinOps'
+      }
+    ]
+  }
+}
+
+// Saved Query: Tokens by Foundry Agent ID
+resource queryTokensByAgent 'Microsoft.OperationalInsights/workspaces/savedSearches@2020-08-01' = {
+  name: '${workspaceName}/APIM_TokensByAgent'
+  properties: {
+    category: 'APIM Token Analytics'
+    displayName: 'Tokens by Agent ID (Foundry)'
+    query: '''
+ApiManagementGatewayLlmLog
+| where isnotempty(ModelName)
+| join kind=leftouter (
+    ApiManagementGatewayLogs
+    | extend H = parse_json(tostring(RequestHeaders))
+    | project CorrelationId,
+              AgentId = tostring(H['x-ms-foundry-agent-id']),
+              Project = coalesce(tostring(H['x-caller-project']), tostring(H['openai-project'])),
+              FoundryModel = tostring(H['x-ms-foundry-model-id'])
+) on CorrelationId
+| where isnotempty(AgentId) and AgentId != 'n/a'
+| summarize
+    PromptTokens = sum(PromptTokens),
+    CompletionTokens = sum(CompletionTokens),
+    TotalTokens = sum(TotalTokens),
+    Requests = count()
+    by AgentId, Project, ModelName
+| order by TotalTokens desc
+'''
+    version: 2
+    tags: [
+      {
+        name: 'Group'
+        value: 'APIM FinOps'
+      }
+    ]
+  }
+}
+
+// Saved Query: Single call inspection
+// Use this when debugging a specific failing/slow call — joins gateway HTTP log
+// with LLM telemetry and surfaces every column you typically need in one row.
+resource querySingleCallInspection 'Microsoft.OperationalInsights/workspaces/savedSearches@2020-08-01' = {
+  name: '${workspaceName}/APIM_SingleCallInspection'
+  properties: {
+    category: 'APIM Token Analytics'
+    displayName: 'Single call inspection (gateway + LLM telemetry joined)'
+    query: '''
+// Replace correlationFilter with a specific CorrelationId to inspect one call.
+let correlationFilter = '';
+ApiManagementGatewayLogs
+| where TimeGenerated > ago(2h)
+| where correlationFilter == '' or CorrelationId == correlationFilter
+| extend H = parse_json(tostring(RequestHeaders))
+| join kind=leftouter (
+    ApiManagementGatewayLlmLog | where isnotempty(ModelName)
+) on CorrelationId
+| project TimeGenerated, CorrelationId, ApiId, Url, Method, ResponseCode, TotalTime, BackendTime,
+          Foundry = tostring(H['x-caller-foundry']),
+          Project = coalesce(tostring(H['x-caller-project']), tostring(H['openai-project'])),
+          AgentId = tostring(H['x-ms-foundry-agent-id']),
+          FoundryModel = tostring(H['x-ms-foundry-model-id']),
+          TraceParent = tostring(H['traceparent']),
+          ClientRequestId = tostring(H['x-ms-client-request-id']),
+          ModelName, DeploymentName, PromptTokens, CompletionTokens, TotalTokens,
+          ApimSubscriptionId, BackendId,
+          RequestBody, BackendResponseBody
+| order by TimeGenerated desc
+| limit 50
+'''
+    version: 2
+    tags: [
+      {
+        name: 'Group'
+        value: 'APIM FinOps'
+      }
+    ]
+  }
+}
+
+
+// Saved Query: Gateway Routing Headers
+resource queryGatewayRoutingHeaders 'Microsoft.OperationalInsights/workspaces/savedSearches@2020-08-01' = {
+  name: '${workspaceName}/APIM_GatewayRoutingHeaders'
+  properties: {
+    category: 'APIM Token Analytics'
+    displayName: 'Gateway Routing Headers (retry, failover, backend pool)'
+    query: '''
+ApiManagementGatewayLogs
+| where ResponseHeaders has_any ("x-backend-pool", "x-backend-retry-count", "x-backend-attempt-trail", "x-inference-failover")
+| extend CallerName = extract(@'"x-caller-name":"([^"]+)"', 1, tostring(ResponseHeaders))
+| extend CallerPriority = extract(@'"x-caller-priority":"([^"]+)"', 1, tostring(ResponseHeaders))
+| extend RequestedModel = extract(@'"x-requested-model":"([^"]+)"', 1, tostring(ResponseHeaders))
+| extend BackendPool = extract(@'"x-backend-pool":"([^"]+)"', 1, tostring(ResponseHeaders))
+| extend HeaderBackendId = extract(@'"x-backend-id":"([^"]+)"', 1, tostring(ResponseHeaders))
+| extend RetryCount = toint(extract(@'"x-backend-retry-count":"([^"]+)"', 1, tostring(ResponseHeaders)))
+| extend AttemptTrail = extract(@'"x-backend-attempt-trail":"([^"]+)"', 1, tostring(ResponseHeaders))
+| extend FailoverTrail = extract(@'"x-inference-failover":"([^"]+)"', 1, tostring(ResponseHeaders))
+| project TimeGenerated, CorrelationId, CallerName, CallerPriority, RequestedModel, BackendPool, BackendId = coalesce(BackendId, HeaderBackendId), RetryCount, AttemptTrail, FailoverTrail, ResponseCode
+| order by TimeGenerated desc
+'''
+    version: 2
+    tags: [
+      {
+        name: 'Group'
+        value: 'APIM FinOps'
+      }
+    ]
+  }
+}
+
+// Saved Query: Quota and Foundry Headers
+resource queryQuotaAndFoundryHeaders 'Microsoft.OperationalInsights/workspaces/savedSearches@2020-08-01' = {
+  name: '${workspaceName}/APIM_QuotaAndFoundryHeaders'
+  properties: {
+    category: 'APIM Token Analytics'
+    displayName: 'Quota and Foundry Headers'
+    query: '''
+ApiManagementGatewayLogs
+| where ResponseHeaders has_any ("x-quota-tokens-consumed", "x-quota-remaining-tokens", "x-tokens-consumed", "x-ratelimit-remaining-tokens", "x-ptu-limit", "x-foundry-agent-id", "x-foundry-project-name", "x-foundry-project-id")
+| extend CallerName = extract(@'"x-caller-name":"([^"]+)"', 1, tostring(ResponseHeaders))
+| extend QuotaTokensConsumed = tolong(extract(@'"x-quota-tokens-consumed":"([^"]+)"', 1, tostring(ResponseHeaders)))
+| extend QuotaRemaining = tolong(extract(@'"x-quota-remaining-tokens":"([^"]+)"', 1, tostring(ResponseHeaders)))
+| extend TokensConsumed = tolong(extract(@'"x-tokens-consumed":"([^"]+)"', 1, tostring(ResponseHeaders)))
+| extend RateLimitRemaining = tolong(extract(@'"x-ratelimit-remaining-tokens":"([^"]+)"', 1, tostring(ResponseHeaders)))
+| extend PtuLimit = tolong(extract(@'"x-ptu-limit":"([^"]+)"', 1, tostring(ResponseHeaders)))
+| extend AgentId = extract(@'"x-foundry-agent-id":"([^"]+)"', 1, tostring(ResponseHeaders))
+| extend ProjectName = extract(@'"x-foundry-project-name":"([^"]+)"', 1, tostring(ResponseHeaders))
+| extend ProjectId = extract(@'"x-foundry-project-id":"([^"]+)"', 1, tostring(ResponseHeaders))
+| summarize arg_max(TimeGenerated, QuotaRemaining), QuotaTokensConsumed = sum(QuotaTokensConsumed), TokensConsumed = sum(TokensConsumed), MinRateLimitRemaining = min(RateLimitRemaining), Requests = count() by CallerName, AgentId, ProjectName, ProjectId, PtuLimit
+| project CallerName, AgentId, ProjectName, ProjectId, PtuLimit, QuotaTokensConsumed, TokensConsumed, LatestQuotaRemaining = QuotaRemaining, MinRateLimitRemaining, Requests
+| order by QuotaTokensConsumed desc
+'''
+    version: 2
+    tags: [
+      {
+        name: 'Group'
+        value: 'APIM FinOps'
+      }
+    ]
+  }
+}
+
 // ------------------
 //    OUTPUTS
 // ------------------
@@ -248,4 +432,10 @@ output savedQueriesDeployed array = [
   queryHourlyTrend.name
   querySubscriptionDetails.name
   queryCostEstimation.name
+  queryTokensByFoundry.name
+  queryTokensByAgent.name
+  querySingleCallInspection.name
+  queryGatewayRoutingHeaders.name
+  queryQuotaAndFoundryHeaders.name
 ]
+

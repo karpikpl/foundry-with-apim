@@ -21,7 +21,7 @@ type apiType = {
 
 param externalApis apiType[] = [] // Array of external API definitions
 
-module dnsSites 'br/public:avm/res/network/private-dns-zone:0.8.0' = {
+module dnsSites 'br/public:avm/res/network/private-dns-zone:0.8.1' = {
   name: 'dns-sites'
   params: {
     tags: tags
@@ -46,7 +46,7 @@ var acaZoneIds = union(
 )
 var acaZoneDict = reduce(acaZoneIds, {}, (cur, next) => union(cur, next))
 
-module dnsAca 'br/public:avm/res/network/private-dns-zone:0.8.0' = [
+module dnsAca 'br/public:avm/res/network/private-dns-zone:0.8.1' = [
   for (zoneName, index) in objectKeys(acaZoneDict): {
     name: 'dns-aca-${index}'
     params: {
@@ -131,6 +131,27 @@ resource mcpTools 'Microsoft.CognitiveServices/accounts/connections@2025-04-01-p
       category: 'RemoteTool'
       group: 'GenericProtocol'
       target: '${apimGatewayUrl}/${api.name}'
+      authType: 'None'
+      isSharedToAll: true
+      // credentials: {
+      //   key: apimSubscription.listSecrets(apimSubscription.apiVersion).primaryKey
+      // }
+      metadata: {
+        type: 'custom_MCP'
+      }
+    }
+  }
+]
+
+// Create the connection with ApiKey authentication
+resource mcpToolsDirect 'Microsoft.CognitiveServices/accounts/connections@2025-04-01-preview' = [
+  for (api, index) in externalApis: if (api.apiType == 'mcp' && !empty(aiFoundryName) && empty(apimGatewayUrl)) {
+    name: 'MCP-${api.name}'
+    parent: aiFoundry
+    properties: {
+      category: 'RemoteTool'
+      group: 'GenericProtocol'
+      target: api.uri
       authType: 'None'
       isSharedToAll: true
       // credentials: {

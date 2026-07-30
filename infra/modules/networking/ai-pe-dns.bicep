@@ -129,6 +129,7 @@ resource aiAccountPrivateEndpoint 'Microsoft.Network/privateEndpoints@2024-05-01
       {
         name: '${aiAccountName}-private-link-service-connection'
         properties: {
+          
           privateLinkServiceId: aiAccount.id
           groupIds: ['account'] // Target AI Services account
         }

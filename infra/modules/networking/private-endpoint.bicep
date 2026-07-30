@@ -26,6 +26,11 @@ param zoneConfigs zoneConfigType[] = []
 
 var nicName = '${privateEndpointName}-nic'
 
+var targetResourceIdParts = split(targetResourceId, '/')
+var targetSubscriptionId = targetResourceIdParts[2]
+// check should really be for cross-tenant, but ARM doesn't provide tenant ID in resource IDs so we have to infer from subscription
+var sameSubscription = targetSubscriptionId == subscription().subscriptionId
+
 resource pe 'Microsoft.Network/privateEndpoints@2023-06-01' = {
   name: privateEndpointName
   location: location
@@ -35,15 +40,29 @@ resource pe 'Microsoft.Network/privateEndpoints@2023-06-01' = {
     subnet: {
       id: subnetId
     }
-    privateLinkServiceConnections: [
-      {
-        name: privateEndpointName
-        properties: {
-          privateLinkServiceId: targetResourceId
-          groupIds: groupIds
-        }
-      }
-    ]
+    privateLinkServiceConnections: sameSubscription
+      ? [
+          {
+            name: privateEndpointName
+            properties: {
+              privateLinkServiceId: targetResourceId
+              groupIds: groupIds
+            }
+          }
+        ]
+      : []
+    manualPrivateLinkServiceConnections: !sameSubscription
+      ? [
+          {
+            name: privateEndpointName
+            properties: {
+              privateLinkServiceId: targetResourceId
+              groupIds: groupIds
+              requestMessage: 'Connection from tenant ${tenant().displayName} ${tenant().tenantId}'
+            }
+          }
+        ]
+      : []
   }
 }
 
@@ -51,14 +70,24 @@ resource peDnsGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@202
   name: '${privateEndpointName}-dns-group'
   parent: pe
   properties: {
-    privateDnsZoneConfigs: [for z in zoneConfigs: {
-      name: z.name
-      properties: {
-        privateDnsZoneId: z.privateDnsZoneId
+    privateDnsZoneConfigs: [
+      for z in zoneConfigs: {
+        name: z.name
+        properties: {
+          privateDnsZoneId: z.privateDnsZoneId
+        }
       }
-    }]
+    ]
   }
+}
+
+resource peNic 'Microsoft.Network/networkInterfaces@2024-05-01' existing = {
+  name: nicName
+  dependsOn: [
+    pe
+  ]
 }
 
 output privateEndpointId string = pe.id
 output privateEndpointName string = pe.name
+output privateIpAddress string = peNic.properties.ipConfigurations[0].properties.privateIPAddress

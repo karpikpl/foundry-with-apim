@@ -1,5 +1,9 @@
 import * as types from '../types/types.bicep'
 param location string = resourceGroup().location
+
+@description('Location for the dependency resources (Storage, AI Search, Cosmos DB). Defaults to `location`. Use a different region when the primary location does not allow one of the services (e.g. AI Search in eastus2).')
+param dependenciesLocation string = location
+
 param tags object = {}
 param resourceToken string
 param aiServicesName string
@@ -26,7 +30,7 @@ var vnetName = trim(existingVnetName)
 module ai_dependencies '../ai-dependencies/standard-dependent-resources.bicep' = {
   name: 'ai-dependencies-deployment'
   params: {
-    location: location
+    location: dependenciesLocation
     tags: tags
     azureStorageName: azureStorageName
     aiSearchName: aiSearchName
@@ -53,6 +57,7 @@ module privateEndpointAndDNS '../networking/private-endpoint-and-dns.bicep' = {
   name: 'private-endpoints-and-dns-deployment'
   params: {
     tags: tags
+    location: location
     aiAccountName: aiServicesName // AI Services to secure
     aiAccountNameResourceGroup: aiAccountNameResourceGroupName
     #disable-next-line what-if-short-circuiting

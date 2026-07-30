@@ -1,11 +1,10 @@
 using 'main.bicep'
 
-// Parameters for the main Bicep template
-param openAiApiBase = readEnvironmentVariable('OPENAI_API_BASE', '')
-param openAiResourceId = readEnvironmentVariable('OPENAI_RESOURCE_ID', '')
-
-var openAiLocationValue = readEnvironmentVariable('OPENAI_LOCATION', '')
-param openAiLocation = empty(openAiLocationValue) ? null : openAiLocationValue
+// Foundry instances discovered by the `preprovision-list-foundry-models` hook
+// (reads EXISTING_FOUNDRY_RESOURCE_IDS / OPENAI_RESOURCE_ID and writes
+// FOUNDRY_INSTANCES_JSON). At least one instance with at least one deployment
+// is required — main.bicep fails the deployment otherwise.
+param foundryInstances = json(readEnvironmentVariable('FOUNDRY_INSTANCES_JSON', '[]'))
 
 var apimPublicEnabledValue = readEnvironmentVariable('APIM_PUBLIC_ENABLED', '')
 param apimPublicEnabled = toLower(apimPublicEnabledValue) == 'true' ? true : false
@@ -18,7 +17,7 @@ param apiServices = [
     name: 'weather-mcp'
     dnsZoneName: 'privatelink.westus.azurecontainerapps.io'
     type: 'managedEnvironments'
-    resourceId: '/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/foundry-landing-zone-westus/providers/Microsoft.App/managedEnvironments/acaqczp34j2qg7pk'
+    resourceId: '/subscriptions/0721e282-2773-4021-af16-e00641ed5e36/resourceGroups/foundry-landing-zone-westus/providers/Microsoft.App/managedEnvironments/acaqczp34j2qg7pk'
     uri: 'https://aca-mcp-qczp34j2qg7pk.ashyocean-7ea49412.westus.azurecontainerapps.io/mcp/mcp'
     apiType: 'mcp'
   }
@@ -26,7 +25,7 @@ param apiServices = [
     name: 'sample-mcp'
     dnsZoneName: 'privatelink.westus.azurecontainerapps.io'
     type: 'managedEnvironments'
-    resourceId: '/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/foundry-landing-zone-westus/providers/Microsoft.App/managedEnvironments/acaqczp34j2qg7pk'
+    resourceId: '/subscriptions/0721e282-2773-4021-af16-e00641ed5e36/resourceGroups/foundry-landing-zone-westus/providers/Microsoft.App/managedEnvironments/acaqczp34j2qg7pk'
     uri: 'https://sample-mcp-qczp34j2qg7pk.ashyocean-7ea49412.westus.azurecontainerapps.io/mcp'
     apiType: 'mcp'
   }
@@ -34,7 +33,7 @@ param apiServices = [
     name: 'weather-openapi'
     dnsZoneName: 'privatelink.westus.azurecontainerapps.io'
     type: 'managedEnvironments'
-    resourceId: '/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/foundry-landing-zone-westus/providers/Microsoft.App/managedEnvironments/acaqczp34j2qg7pk'
+    resourceId: '/subscriptions/0721e282-2773-4021-af16-e00641ed5e36/resourceGroups/foundry-landing-zone-westus/providers/Microsoft.App/managedEnvironments/acaqczp34j2qg7pk'
     uri: 'https://aca-openapi-qczp34j2qg7pk.ashyocean-7ea49412.westus.azurecontainerapps.io'
     apiType: 'openapi'
     openApiSpec: string({

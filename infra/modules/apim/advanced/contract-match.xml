@@ -1,0 +1,205 @@
+<!--
+    Contract Match Section
+    ======================
+    Substituted into caller-identity-fragment.xml's contracts-load-section
+    placeholder by caller-identity-fragment.bicep when access contracts are
+    wired. Overwrites the fragment's default caller-* / model-* / quota
+    variables based on a contract loaded from the configured store.
+
+    Placeholders substituted at deploy time:
+      {tenant-id}              — Azure AD tenant ID for JWT validation
+      {contracts-load-blob}    — blob-fetch (or named-value) snippet that
+                                  sets context.Variables["contracts-json"]
+-->
+
+<!-- STEP 1: Validate Bearer Token against Entra ID (contracts mode only) -->
+<validate-azure-ad-token
+    tenant-id="{tenant-id}"
+    header-name="Authorization"
+    failed-validation-httpcode="401"
+    failed-validation-error-message="Unauthorized. A valid Entra ID bearer token is required."
+    output-token-variable-name="jwt">
+    <audiences>
+        <audience>https://cognitiveservices.azure.com</audience>
+    </audiences>
+</validate-azure-ad-token>
+
+<!-- STEP 2: Extract caller identity claims from JWT (additional claims beyond what the
+     observability fragment derives from xms_mirid). -->
+<set-variable name="claim-azp" value="@(((Jwt)context.Variables[&quot;jwt&quot;]).Claims.GetValueOrDefault(&quot;azp&quot;, &quot;&quot;))" />
+<set-variable name="claim-appid" value="@(((Jwt)context.Variables[&quot;jwt&quot;]).Claims.GetValueOrDefault(&quot;appid&quot;, &quot;&quot;))" />
+<set-variable name="claim-xms_mirid" value="@(((Jwt)context.Variables[&quot;jwt&quot;]).Claims.GetValueOrDefault(&quot;xms_mirid&quot;, &quot;&quot;))" />
+<set-variable name="claim-oid" value="@(((Jwt)context.Variables[&quot;jwt&quot;]).Claims.GetValueOrDefault(&quot;oid&quot;, &quot;&quot;))" />
+<set-variable name="claim-sub" value="@(((Jwt)context.Variables[&quot;jwt&quot;]).Claims.GetValueOrDefault(&quot;sub&quot;, &quot;&quot;))" />
+
+<!-- STEP 3: Load contracts JSON (blob or named-value). Substituted at deploy. -->
+{contracts-load-blob}
+
+<!-- STEP 4: Parse contracts JSON and find a matching identity. -->
+<set-variable name="contracts-parsed" value="@(Newtonsoft.Json.Linq.JObject.Parse((string)context.Variables[&quot;contracts-json&quot;]))" />
+<set-variable name="contract-match" value="@{
+    try {
+        var root = (Newtonsoft.Json.Linq.JObject)context.Variables[&quot;contracts-parsed&quot;];
+        var identities = root[&quot;identities&quot;] as Newtonsoft.Json.Linq.JArray;
+        if (identities == null) { return null; }
+
+        var claims = new System.Collections.Generic.Dictionary<string, string>();
+        claims[&quot;azp&quot;] = (string)context.Variables[&quot;claim-azp&quot;];
+        claims[&quot;appid&quot;] = (string)context.Variables[&quot;claim-appid&quot;];
+        claims[&quot;xms_mirid&quot;] = (string)context.Variables[&quot;claim-xms_mirid&quot;];
+        claims[&quot;oid&quot;] = (string)context.Variables[&quot;claim-oid&quot;];
+        claims[&quot;sub&quot;] = (string)context.Variables[&quot;claim-sub&quot;];
+
+        foreach (var identity in identities)
+        {
+            var claimNameToken = identity[&quot;claimName&quot;];
+            var prefixToken = identity[&quot;value&quot;];
+            var contractToken = identity[&quot;contract&quot;];
+
+            if (claimNameToken == null || prefixToken == null || contractToken == null) { continue; }
+
+            var claimName = claimNameToken.ToString();
+            var prefix = prefixToken.ToString();
+            var contractName = contractToken.ToString();
+
+            if (string.IsNullOrEmpty(claimName) || string.IsNullOrEmpty(prefix) || string.IsNullOrEmpty(contractName)) { continue; }
+
+            string claimValue;
+            if (!claims.TryGetValue(claimName, out claimValue) || string.IsNullOrEmpty(claimValue))
+            {
+                if (claimName == &quot;azp&quot;) { claims.TryGetValue(&quot;appid&quot;, out claimValue); }
+                else if (claimName == &quot;appid&quot;) { claims.TryGetValue(&quot;azp&quot;, out claimValue); }
+                if (string.IsNullOrEmpty(claimValue)) { continue; }
+            }
+
+            if (claimValue.StartsWith(prefix))
+            {
+                var displayToken = identity[&quot;displayName&quot;];
+                var matchedName = displayToken != null ? displayToken.ToString() : prefix;
+                var contracts = root[&quot;contracts&quot;] as Newtonsoft.Json.Linq.JObject;
+                var contractObj = contracts != null ? contracts[contractName] : null;
+                var result = new Newtonsoft.Json.Linq.JObject();
+                result[&quot;contract&quot;] = contractObj;
+                result[&quot;matchedIdentity&quot;] = matchedName;
+                return result;
+            }
+        }
+        return null;
+    } catch {
+        return null;
+    }
+}" />
+
+<set-variable name="contract-obj" value="@{
+    var match = (Newtonsoft.Json.Linq.JObject)context.Variables[&quot;contract-match&quot;];
+    if (match == null) { return null; }
+    return match[&quot;contract&quot;];
+}" />
+<set-variable name="matched-identity" value="@{
+    var match = (Newtonsoft.Json.Linq.JObject)context.Variables[&quot;contract-match&quot;];
+    if (match == null) { return &quot;unknown&quot;; }
+    var v = match[&quot;matchedIdentity&quot;];
+    return v != null ? v.ToString() : &quot;unknown&quot;;
+}" />
+
+<!-- STEP 5: Authorize — reject unknown callers. -->
+<choose>
+    <when condition="@(context.Variables[&quot;contract-obj&quot;] == null)">
+        <return-response>
+            <set-status code="403" reason="Forbidden" />
+            <set-header name="Content-Type" exists-action="override">
+                <value>application/json</value>
+            </set-header>
+            <set-body>@{
+                var callerId = (string)context.Variables[&quot;caller-id&quot;];
+                return &quot;{\&quot;error\&quot;: \&quot;forbidden\&quot;, \&quot;message\&quot;: \&quot;Identity '&quot; + callerId + &quot;' does not match any access contract. Contact the platform team to request access.\&quot;}&quot;;
+            }</set-body>
+        </return-response>
+    </when>
+</choose>
+
+<!-- STEP 6: Override caller-* defaults with contract-derived values. -->
+<set-variable name="caller-name" value="@{
+    var c = (Newtonsoft.Json.Linq.JObject)context.Variables[&quot;contract-obj&quot;];
+    var v = c[&quot;name&quot;]; return v != null ? v.ToString() : &quot;unknown&quot;;
+}" />
+<set-variable name="priority" value="@{
+    var c = (Newtonsoft.Json.Linq.JObject)context.Variables[&quot;contract-obj&quot;];
+    var v = c[&quot;priority&quot;]; return v != null ? v.Value<int>() : 2;
+}" />
+<set-variable name="priority-label" value="@{
+    var p = (int)context.Variables[&quot;priority&quot;];
+    return p == 1 ? &quot;production&quot; : &quot;standard&quot;;
+}" />
+<set-variable name="caller-monthly-quota" value="@{
+    var c = (Newtonsoft.Json.Linq.JObject)context.Variables[&quot;contract-obj&quot;];
+    var v = c[&quot;monthlyQuota&quot;]; return v != null ? v.Value<long>() : (long)0;
+}" />
+<set-variable name="caller-environment" value="@{
+    var c = (Newtonsoft.Json.Linq.JObject)context.Variables[&quot;contract-obj&quot;];
+    var v = c[&quot;environment&quot;]; return v != null ? v.ToString() : &quot;UNKNOWN&quot;;
+}" />
+<set-variable name="contract-models" value="@(((Newtonsoft.Json.Linq.JObject)context.Variables[&quot;contract-obj&quot;])[&quot;models&quot;])" />
+
+<!-- STEP 7: Extract requested model from URL/query/body. -->
+<set-variable name="requestedModel" value="@{
+    var queryDeployment = context.Request.Url.Query.GetValueOrDefault(&quot;deployment&quot;, &quot;&quot;);
+    if (!string.IsNullOrEmpty(queryDeployment)) { return queryDeployment; }
+    var queryModel = context.Request.Url.Query.GetValueOrDefault(&quot;model&quot;, &quot;&quot;);
+    if (!string.IsNullOrEmpty(queryModel)) { return queryModel; }
+
+    var segments = context.Request.Url.Path.Split('/');
+    for (int i = 0; i < segments.Length - 1; i++) {
+        if (segments[i] == &quot;deployments&quot; && i + 1 < segments.Length) {
+            return segments[i + 1];
+        }
+    }
+    try {
+        var body = context.Request.Body.As<Newtonsoft.Json.Linq.JObject>(preserveContent: true);
+        var model = body?[&quot;model&quot;];
+        if (model != null && !string.IsNullOrEmpty(model.ToString())) {
+            return model.ToString();
+        }
+    } catch { }
+    return &quot;unknown&quot;;
+}" />
+
+<!-- STEP 8: Validate model access + extract per-model limits. -->
+<set-variable name="model-config" value="@{
+    var models = (Newtonsoft.Json.Linq.JToken)context.Variables[&quot;contract-models&quot;];
+    if (models == null) { return null; }
+    var requested = (string)context.Variables[&quot;requestedModel&quot;];
+    return models[requested];
+}" />
+
+<choose>
+    <when condition="@(context.Variables[&quot;model-config&quot;] == null)">
+        <return-response>
+            <set-status code="403" reason="Forbidden" />
+            <set-header name="Content-Type" exists-action="override">
+                <value>application/json</value>
+            </set-header>
+            <set-body>@{
+                var model = (string)context.Variables[&quot;requestedModel&quot;];
+                var models = (Newtonsoft.Json.Linq.JToken)context.Variables[&quot;contract-models&quot;];
+                var allowed = models != null ? string.Join(&quot;, &quot;, ((Newtonsoft.Json.Linq.JObject)models).Properties().Select(p => p.Name)) : &quot;none&quot;;
+                return &quot;{\&quot;error\&quot;: \&quot;model_not_authorized\&quot;, \&quot;message\&quot;: \&quot;Model '&quot; + model + &quot;' is not in your access contract. Allowed: &quot; + allowed + &quot;\&quot;}&quot;;
+            }</set-body>
+        </return-response>
+    </when>
+</choose>
+
+<set-variable name="model-tpm" value="@{
+    var m = (Newtonsoft.Json.Linq.JToken)context.Variables[&quot;model-config&quot;];
+    var v = m[&quot;tpm&quot;]; return v != null ? v.Value<int>() : 10000;
+}" />
+<set-variable name="model-ptu-tpm" value="@{
+    var m = (Newtonsoft.Json.Linq.JToken)context.Variables[&quot;model-config&quot;];
+    var v = m[&quot;ptuTpm&quot;]; return v != null ? v.Value<int>() : 0;
+}" />
+
+<set-variable name="allowed-models" value="@{
+    var models = (Newtonsoft.Json.Linq.JToken)context.Variables[&quot;contract-models&quot;];
+    if (models == null) { return &quot;&quot;; }
+    return string.Join(&quot;,&quot;, ((Newtonsoft.Json.Linq.JObject)models).Properties().Select(p => p.Name));
+}" />

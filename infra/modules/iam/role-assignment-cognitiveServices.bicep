@@ -1,11 +1,12 @@
 import * as types from '../types/types.bicep'
 
 param accountName string
-param projectPrincipalId string
+param principalId string
 param roleName types.CognitiveServicesRoleAssignmentsType = 'Azure AI User'
 @allowed([
   'ServicePrincipal'
   'User'
+  'Group'
 ])
 param servicePrincipalType string = 'ServicePrincipal'
 
@@ -24,18 +25,47 @@ var roleDefinitionIds = {
     '25fbc0a9-bd7c-42a3-aa1a-3b75d497ee68'
   )
   // Azure AI User https://learn.microsoft.com/en-us/azure/ai-foundry/concepts/rbac-azure-ai-foundry#azure-ai-user
+  // Aliased as "Foundry User" in newer docs (same GUID).
   'Azure AI User': subscriptionResourceId(
     'Microsoft.Authorization/roleDefinitions',
     '53ca6127-db72-4b80-b1b0-d745d6d5456d'
+  )
+  'Foundry User': subscriptionResourceId(
+    'Microsoft.Authorization/roleDefinitions',
+    '53ca6127-db72-4b80-b1b0-d745d6d5456d'
+  )
+  'Foundry Agent Consumer': subscriptionResourceId(
+    'Microsoft.Authorization/roleDefinitions',
+    'eed3b665-ab3a-47b6-8f48-c9382fb1dad6'
+  )
+  'Foundry Project Runtime User': subscriptionResourceId(
+    'Microsoft.Authorization/roleDefinitions',
+    '142bfaed-a13f-4c2d-bed2-6db62c4a1009'
   )
   Reader: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'acdd72a7-3385-48ef-bd42-f606fba81ae7')
   'Azure AI Project Manager': subscriptionResourceId(
     'Microsoft.Authorization/roleDefinitions',
     'eadc314b-1a2d-4efa-be10-5d325db5065e'
   )
+  'Foundry Project Manager': subscriptionResourceId(
+    'Microsoft.Authorization/roleDefinitions',
+    'eadc314b-1a2d-4efa-be10-5d325db5065e'
+  )
   'Azure AI Account Owner': subscriptionResourceId(
     'Microsoft.Authorization/roleDefinitions',
     'e47c6f54-e4a2-4754-9501-8e0985b135e1'
+  )
+  'Foundry Account Owner': subscriptionResourceId(
+    'Microsoft.Authorization/roleDefinitions',
+    'e47c6f54-e4a2-4754-9501-8e0985b135e1'
+  )
+    'Azure AI Owner': subscriptionResourceId(
+    'Microsoft.Authorization/roleDefinitions',
+    'c883944f-8b7b-4483-af10-35834be79c4a'
+  )
+  'Foundry Owner': subscriptionResourceId(
+    'Microsoft.Authorization/roleDefinitions',
+    'c883944f-8b7b-4483-af10-35834be79c4a'
   )
 }
 
@@ -47,9 +77,9 @@ resource account 'Microsoft.CognitiveServices/accounts@2025-07-01-preview' exist
 
 resource roleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   scope: account
-  name: guid(projectPrincipalId, roleDefinitionIds[roleName], account.id)
+  name: guid(principalId, roleDefinitionIds[roleName], account.id)
   properties: {
-    principalId: projectPrincipalId
+    principalId: principalId
     roleDefinitionId: roleDefinitionIds[roleName]
     principalType: servicePrincipalType
   }

@@ -185,19 +185,28 @@ git clone https://github.com/your-org/foundry-with-apim.git
 cd foundry-with-apim/infra/<deployment-option>
 ```
 
-### 2️⃣ Set Environment Variables
+### 2️⃣ Point at your existing Foundry / Azure OpenAI resource(s)
+
+The APIM-based options (`ai-gateway`, `ai-gateway-basic`, `ai-gateway-internal`, `ai-gateway-pe`, `ai-gateway-premium`) **bring your own** Foundry/Azure OpenAI account(s). A preprovision hook ([`infra/scripts/preprovision-list-foundry-models.sh`](./infra/scripts/preprovision-list-foundry-models.sh) / `.ps1`) enumerates the model deployments on those accounts via ARM and writes them into `FOUNDRY_INSTANCES_JSON`, which `main.bicepparam` consumes to synthesise per-model APIM backends and pools.
 
 ```bash
-# For APIM-based options
-export OPENAI_API_BASE="https://your-openai-resource.openai.azure.com"
-export OPENAI_RESOURCE_ID="/subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.CognitiveServices/accounts/<openai-name>"
+# Preferred: one or more Foundry / Azure OpenAI accounts (comma-separated)
+export EXISTING_FOUNDRY_RESOURCE_IDS="/subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.CognitiveServices/accounts/<foundry-1>,/subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.CognitiveServices/accounts/<foundry-2>"
 
-# For LiteLLM option
+# Backwards-compatible single-instance fallbacks also accepted:
+#   EXISTING_FOUNDRY_RESOURCE_ID   or   OPENAI_RESOURCE_ID
+
+# Optional: front another APIM gateway that already exposes a per-model catalog
+# export EXISTING_APIM_RESOURCE_IDS="/subscriptions/.../Microsoft.ApiManagement/service/<apim>"
+
+# For the LiteLLM option
 export OPENAI_API_KEY="your-azure-openai-api-key"
 
-# For OpenRouter option
+# For the OpenRouter option
 export OPENROUTER_API_KEY="your-openrouter-api-key"
 ```
+
+Model deployments are **auto-discovered** — you don't list them. If no inputs are set the script writes `[]` and the Bicep deployment fails fast with a clear error.
 
 ### 3️⃣ Deploy
 
@@ -212,7 +221,7 @@ azd up
 - ✅ **Azure CLI** and **Azure Developer CLI (azd)** installed
 - ✅ **Azure subscription** with AI services quota
 - ✅ **Required roles**: Owner or Contributor + User Access Administrator
-- ✅ **External Azure OpenAI resource** (for APIM-based options)
+- ✅ **Existing Foundry / Azure OpenAI account(s)** with model deployments (for APIM-based options — the preprovision hook needs `Cognitive Services Usages Reader` or equivalent to list deployments)
 
 #### 📦 Register Resource Providers
 

@@ -61,7 +61,7 @@ module storageAccountRoleAssignment '../iam/azure-storage-account-role-assignmen
   scope: resourceGroup(aiDependencies.azureStorage.subscriptionId, aiDependencies.azureStorage.resourceGroupName)
   params: {
     azureStorageName: aiDependencies.azureStorage.name
-    projectPrincipalId: aiProject.outputs.FOUNDRY_PROJECT_PRINCIPAL_ID
+    principalId: aiProject.outputs.FOUNDRY_PROJECT_PRINCIPAL_ID
   }
 }
 
@@ -71,7 +71,7 @@ module cosmosAccountRoleAssignments '../iam/cosmosdb-account-role-assignment.bic
   scope: resourceGroup(aiDependencies.cosmosDB.subscriptionId, aiDependencies.cosmosDB.resourceGroupName)
   params: {
     cosmosDBName: aiDependencies.cosmosDB.name
-    projectPrincipalId: aiProject.outputs.FOUNDRY_PROJECT_PRINCIPAL_ID
+    principalId: aiProject.outputs.FOUNDRY_PROJECT_PRINCIPAL_ID
   }
 }
 
@@ -87,7 +87,7 @@ module aiSearchRoleAssignments '../iam/ai-search-role-assignments.bicep' = {
 
 // This module creates the capability host for the project and account
 module addProjectCapabilityHost 'add-project-capability-host.bicep' = {
-  name: 'capabilityHost-configuration-deployment-${project_name}'
+  name: take('capabilityHost-configuration-deployment-${project_name}', 64)
   params: {
     accountName: foundryName
     projectName: aiProject.outputs.FOUNDRY_PROJECT_NAME
@@ -108,7 +108,7 @@ module storageContainersRoleAssignment '../iam/blob-storage-container-role-assig
   name: 'storage-containers-deployment-${project_name}'
   scope: resourceGroup(aiDependencies.azureStorage.subscriptionId, aiDependencies.azureStorage.resourceGroupName)
   params: {
-    aiProjectPrincipalId: aiProject.outputs.FOUNDRY_PROJECT_PRINCIPAL_ID
+    principalId: aiProject.outputs.FOUNDRY_PROJECT_PRINCIPAL_ID
     storageName: aiDependencies.azureStorage.name
     workspaceId: formatProjectWorkspaceId.outputs.FOUNDRY_PROJECT_WORKSPACE_ID
   }
@@ -124,7 +124,7 @@ module cosmosContainerRoleAssignments '../iam/cosmos-container-role-assignments.
   params: {
     cosmosAccountName: aiDependencies.cosmosDB.name
     projectWorkspaceId: formatProjectWorkspaceId.outputs.FOUNDRY_PROJECT_WORKSPACE_ID
-    projectPrincipalId: aiProject.outputs.FOUNDRY_PROJECT_PRINCIPAL_ID
+    principalId: aiProject.outputs.FOUNDRY_PROJECT_PRINCIPAL_ID
   }
   dependsOn: [
     addProjectCapabilityHost

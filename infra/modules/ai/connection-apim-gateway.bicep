@@ -46,7 +46,7 @@ type ModelType = {
   name: string
   properties: {
     model: {
-      format: string
+      format: 'OpenAI' | 'Anthropic' | 'OpenAI-OSS' | 'DeepSeek' | 'Cohere' // Extend with other formats as needed
       name: string
       version: string
     }
@@ -62,8 +62,20 @@ param customHeaders object = {}
 param authConfig object = {}
 
 // Connection configuration
+//
+// NOTE on `authType` default: the Foundry portal's "Connections → Models" list
+// only renders `metadata.models` (i.e. the static list passed by the caller)
+// when BOTH of these are true:
+//   1. authType == 'ProjectManagedIdentity'
+//   2. metadata.customHeaders is non-empty
+// Under `ApiKey`, the portal silently ignores the static list and shows a
+// global-catalog discovery count (~118-464 depending on declared `format`).
+// We default to `ProjectManagedIdentity` here and always inject the APIM
+// subscription key as customHeaders.api-key further down, so callers get
+// correct portal display without any extra parameters. See
+// agents_anthropic/foundry-byom-ui-findings.md for the full investigation.
 @allowed(['ApiKey', 'ProjectManagedIdentity'])
-param authType string = 'ApiKey'
+param authType string = 'ProjectManagedIdentity'
 param isSharedToAll bool = false
 
 // APIM-specific metadata (passed through from parent template)
@@ -140,17 +152,6 @@ var apimSubscriptionId = split(apimResourceId, '/')[2]
 var apimResourceGroupName = split(apimResourceId, '/')[4]
 var apimServiceName = split(apimResourceId, '/')[8]
 
-// Reference the AI Foundry account
-resource aiFoundry 'Microsoft.CognitiveServices/accounts@2025-04-01-preview' existing = {
-  name: aiFoundryName
-  scope: resourceGroup()
-}
-
-resource aiProject 'Microsoft.CognitiveServices/accounts/projects@2025-04-01-preview' existing = if (aiFoundryProjectName != null) {
-  name: aiFoundryProjectName!
-  parent: aiFoundry
-}
-
 // Reference the APIM service (can be in different resource group/subscription)
 resource existingApim 'Microsoft.ApiManagement/service@2021-08-01' existing = {
   name: apimServiceName
@@ -164,76 +165,106 @@ resource apimApi 'Microsoft.ApiManagement/service/apis@2021-08-01' existing = {
 }
 
 // Reference the APIM subscription to get keys (only for ApiKey auth)
-resource apimSubscription 'Microsoft.ApiManagement/service/subscriptions@2021-08-01' existing = {
+resource apimSubscription 'Microsoft.ApiManagement/service/subscriptions@2021-08-01' existing = if (!empty(apimSubscriptionName)) {
   name: apimSubscriptionName
   parent: existingApim
 }
 
+var subscriptionKey = !empty(apimSubscriptionName)
+  ? apimSubscription!.listSecrets(apimSubscription.apiVersion).primaryKey
+  : ''
+
+// The Foundry portal only displays `metadata.models` when the connection uses
+// `authType=ProjectManagedIdentity` AND `metadata.customHeaders` is non-empty.
+// We inject a single constant marker header to satisfy that rule without
+// leaking the APIM subscription key into the connection metadata. The real
+// auth path is:
+//   - ApiKey  → key flows via `credentials.key` (separate field, handled by
+//     the connection-account.bicep / connection-project.bicep submodules)
+//   - PMI     → Foundry's ModelGateway sends a JWT in `Authorization`, which
+//     APIM validates via `<validate-azure-ad-token>` in the API policy
+//
+// For APIs that previously relied on `subscriptionRequired=true` + the
+// customHeaders.api-key for caller auth (e.g. anthropic-api with no JWT
+// validation), set `subscriptionRequired=false` on the API and rely on the
+// JWT validation policy instead — see policy-per-model.xml / policy_jwt.xml.
+var subscriptionKeyHeader = {
+  customHeaders: string({ 'x-ms-foundry-models': 'byom' })
+}
+var subscriptionKeyValidation = authType == 'ApiKey' && empty(apimSubscriptionName)
+  ? fail('ERROR: ApiKey authentication requires a valid APIM subscription name.')
+  : true
+var isProjectConnection = !empty(aiFoundryProjectName)
+var isAccountConnection = !isProjectConnection
+
 // Create the connection with ApiKey authentication
-resource connectionApiKeyAccount 'Microsoft.CognitiveServices/accounts/connections@2025-04-01-preview' = if (authType == 'ApiKey' && aiFoundryProjectName == null) {
-  name: connectionName
-  parent: aiFoundry
-  properties: {
+module connectionApiKeyAccount './connection-account.bicep' = if (authType == 'ApiKey' && isAccountConnection) {
+  name: take('${connectionName}-m', 64)
+  params: {
+    aiFoundryName: aiFoundryName
+    connectionName: connectionName
     category: 'ApiManagement'
     target: '${apimCustomDomainGatewayUrl ?? existingApim.properties.gatewayUrl}/${apimApi.properties.path}'
     authType: 'ApiKey'
     isSharedToAll: isSharedToAll
-    credentials: {
-      key: apimSubscription.listSecrets(apimSubscription.apiVersion).primaryKey
-    }
     metadata: metadata
+    subscriptionKey: subscriptionKey
   }
 }
 
 // Create the connection with ApiKey authentication
-resource connectionApiKeyProject 'Microsoft.CognitiveServices/accounts/projects/connections@2025-04-01-preview' = if (authType == 'ApiKey' && aiFoundryProjectName != null) {
-  name: connectionName
-  parent: aiProject
-  properties: {
+module connectionApiKeyProject './connection-project.bicep' = if (authType == 'ApiKey' && isProjectConnection) {
+  name: take('${connectionName}-m', 64)
+  params: {
+    aiFoundryName: aiFoundryName
+    aiFoundryProjectName: aiFoundryProjectName!
+    connectionName: connectionName
     category: 'ApiManagement'
     target: '${apimCustomDomainGatewayUrl ?? existingApim.properties.gatewayUrl}/${apimApi.properties.path}'
     authType: 'ApiKey'
     isSharedToAll: isSharedToAll
-    credentials: {
-      key: apimSubscription.listSecrets(apimSubscription.apiVersion).primaryKey
-    }
     metadata: metadata
+    subscriptionKey: subscriptionKey
   }
 }
 
-resource connectionAADProject 'Microsoft.CognitiveServices/accounts/projects/connections@2025-04-01-preview' = if (authType == 'ProjectManagedIdentity' && aiFoundryProjectName != null) {
-  name: connectionName
-  parent: aiProject
-  properties: {
+module connectionAADProject './connection-project.bicep' = if (authType == 'ProjectManagedIdentity' && isProjectConnection) {
+  name: take('${connectionName}-m', 64)
+  params: {
+    connectionName: connectionName
+    aiFoundryName: aiFoundryName
+    aiFoundryProjectName: aiFoundryProjectName!
     category: 'ApiManagement'
     target: '${existingApim.properties.gatewayUrl}/${apimApi.properties.path}'
     authType: 'ProjectManagedIdentity'
-    audience: 'https://cognitiveservices.azure.com'
     isSharedToAll: isSharedToAll
-    metadata: union(metadata, {
-      customHeaders: string({ 'api-key': apimSubscription.listSecrets(apimSubscription.apiVersion).primaryKey })
-    })
+    metadata: union(metadata, subscriptionKeyHeader)
   }
 }
 
-resource connectionAADAccount 'Microsoft.CognitiveServices/accounts/connections@2025-04-01-preview' = if (authType == 'ProjectManagedIdentity' && aiFoundryProjectName == null) {
-  name: connectionName
-  parent: aiFoundry
-  properties: {
+module connectionAADAccount './connection-account.bicep' = if (authType == 'ProjectManagedIdentity' && isAccountConnection) {
+  name: take('${connectionName}-m', 64)
+  params: {
+    aiFoundryName: aiFoundryName
+    connectionName: connectionName
     category: 'ApiManagement'
     target: '${existingApim.properties.gatewayUrl}/${apimApi.properties.path}'
     authType: 'ProjectManagedIdentity'
-    audience: 'https://cognitiveservices.azure.com'
     isSharedToAll: isSharedToAll
-    metadata: union(metadata, {
-      customHeaders: string({ 'api-key': apimSubscription.listSecrets(apimSubscription.apiVersion).primaryKey })
-    })
+    metadata: union(metadata, subscriptionKeyHeader)
   }
 }
 
 // Outputs (only from the created connection)
-output connectionName string = (connectionAADAccount.?name ?? connectionAADProject.?name ?? connectionApiKeyAccount.?name ?? connectionApiKeyProject.?name) ?? ''
-output connectionId string = (connectionAADAccount.?id ?? connectionAADProject.?id ?? connectionApiKeyAccount.?id ?? connectionApiKeyProject.?id) ?? ''
+output connectionName string = authType == 'ProjectManagedIdentity'
+  ? (isAccountConnection ? connectionAADAccount!.outputs.connectionName : connectionAADProject!.outputs.connectionName)
+  : (isAccountConnection
+      ? connectionApiKeyAccount!.outputs.connectionName
+      : connectionApiKeyProject!.outputs.connectionName)
+output connectionId string = authType == 'ProjectManagedIdentity'
+  ? (isAccountConnection ? connectionAADAccount!.outputs.connectionId : connectionAADProject!.outputs.connectionId)
+  : (isAccountConnection ? connectionApiKeyAccount!.outputs.connectionId : connectionApiKeyProject!.outputs.connectionId)
 output targetUrl string = '${existingApim.properties.gatewayUrl}/${apimApi.properties.path}'
 output authType string = authType
 output metadata object = metadata
+output subscriptionValid bool = subscriptionKeyValidation
